@@ -3,7 +3,7 @@ import { dirname, join } from "path";
 import * as semver from "semver";
 import * as YAML from "yaml";
 import { Project, DependencyType, Component } from "../../src";
-import { YarnNodeLinker, YarnNpmPublishAccess } from "../../src/javascript";
+import { UpgradeDependencies, YarnNodeLinker, YarnNpmPublishAccess } from "../../src/javascript";
 import {
   NodePackage,
   NodePackageManager,
@@ -1186,6 +1186,57 @@ describe("yarn berry", () => {
       ).toThrow(
         "Cannot set npmAccess (public) and yarnRcOptions.npmPublishAccess (restricted) to different values.",
       );
+    });
+  });
+
+  describe("Package deduplication", () => {
+    test("without dependency upgrades", () => {
+      const project = new TestProject();
+      new NodePackage(project, {
+        packageManager: NodePackageManager.YARN_BERRY,
+        yarnBerryOptions: {
+          dedupePackages: ['@aws-sdk/*', 'some-package'],
+        },
+      });
+
+      const snps = synthSnapshot(project);
+
+      expect(snps[".projen/tasks.json"]).toEqual(expect.objectContaining({
+        tasks: expect.objectContaining({
+          install: expect.objectContaining({
+            steps: expect.arrayContaining([
+              expect.objectContaining({
+                execArgs: ['yarn', 'dedupe', '@aws-sdk/*', 'some-package'],
+              })
+            ]),
+          }),
+        }),
+      }));
+    });
+
+    test("with dependency upgrades", () => {
+      const project = new TestProject();
+      new NodePackage(project, {
+        packageManager: NodePackageManager.YARN_BERRY,
+        yarnBerryOptions: {
+          dedupePackages: ['@aws-sdk/*', 'some-package'],
+        },
+      });
+      new UpgradeDependencies(project, {});
+
+      const snps = synthSnapshot(project);
+
+      expect(snps[".projen/tasks.json"]).toEqual(expect.objectContaining({
+        tasks: expect.objectContaining({
+          "post-upgrade": expect.objectContaining({
+            steps: expect.arrayContaining([
+              expect.objectContaining({
+                execArgs: ['yarn', 'dedupe', '@aws-sdk/*', 'some-package'],
+              })
+            ]),
+          }),
+        }),
+      }));
     });
   });
 });

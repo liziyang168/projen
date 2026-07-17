@@ -6,7 +6,7 @@ import type { JestOptions } from "./jest";
 import { Jest } from "./jest";
 import type { LicenseCheckerOptions } from "./license-checker";
 import { LicenseChecker } from "./license-checker";
-import type { CodeArtifactOptions, NodePackageOptions } from "./node-package";
+import type { NodePackageOptions } from "./node-package";
 import {
   CodeArtifactAuthProvider as NodePackageCodeArtifactAuthProvider,
   NodePackage,
@@ -27,14 +27,9 @@ import type {
 import { AutoMerge, GitHub, GitHubProject } from "../github";
 import type { BiomeOptions } from "./biome/biome";
 import { Biome } from "./biome/biome";
-import {
-  execCommand,
-  executeCommandPriorInstallation,
-  isYarnBerry,
-  isYarnClassic,
-} from "./util";
+import { execCommand } from "./util";
 import { DEFAULT_GITHUB_ACTIONS_USER } from "../github/constants";
-import { ensureNotHiddenPath, secretToString } from "../github/private/util";
+import { ensureNotHiddenPath } from "../github/private/util";
 import type {
   JobPermissions,
   JobStep,
@@ -62,6 +57,7 @@ import { filteredRunsOnOptions } from "../runner-options";
 import type { Task } from "../task";
 import { deepMerge, multipleSelected, normalizePersistedPath } from "../util";
 import { ensureRelativePathStartsWithDot } from "../util/path";
+import { renderWorkflowSetupInternal } from "./private/github-workflow-helpers";
 
 const PROJEN_SCRIPT = "projen";
 
@@ -1027,87 +1023,6 @@ export class NodeProject extends GitHubProject {
   }
 
   /**
-   * Get steps for scoped package access
-   *
-   * @param codeArtifactOptions Details of logging in to AWS
-   * @returns array of job steps required for each private scoped packages
-   */
-  private getScopedPackageSteps(
-    codeArtifactOptions: CodeArtifactOptions | undefined,
-  ): JobStep[] {
-    const parsedCodeArtifactOptions = {
-      accessKeyIdSecret:
-        codeArtifactOptions?.accessKeyIdSecret ?? "AWS_ACCESS_KEY_ID",
-      secretAccessKeySecret:
-        codeArtifactOptions?.secretAccessKeySecret ?? "AWS_SECRET_ACCESS_KEY",
-      roleToAssume: codeArtifactOptions?.roleToAssume,
-      authProvider: codeArtifactOptions?.authProvider,
-    };
-
-    const executeProjenCommand = `${executeCommandPriorInstallation(this.package.packageManager).join(" ")} projen`;
-
-    if (
-      parsedCodeArtifactOptions.authProvider ===
-      NodePackageCodeArtifactAuthProvider.GITHUB_OIDC
-    ) {
-      return [
-        {
-          name: "Configure AWS Credentials",
-          uses: "aws-actions/configure-aws-credentials@v6",
-          with: {
-            "aws-region": "us-east-2",
-            "role-to-assume": parsedCodeArtifactOptions.roleToAssume,
-            "role-duration-seconds": 900,
-          },
-        },
-        {
-          name: "AWS CodeArtifact Login",
-          run: `${executeProjenCommand} ca:login`,
-        },
-      ];
-    }
-
-    if (parsedCodeArtifactOptions.roleToAssume) {
-      return [
-        {
-          name: "Configure AWS Credentials",
-          uses: "aws-actions/configure-aws-credentials@v6",
-          with: {
-            "aws-access-key-id": secretToString(
-              parsedCodeArtifactOptions.accessKeyIdSecret,
-            ),
-            "aws-secret-access-key": secretToString(
-              parsedCodeArtifactOptions.secretAccessKeySecret,
-            ),
-            "aws-region": "us-east-2",
-            "role-to-assume": parsedCodeArtifactOptions.roleToAssume,
-            "role-duration-seconds": 900,
-          },
-        },
-        {
-          name: "AWS CodeArtifact Login",
-          run: `${executeProjenCommand} ca:login`,
-        },
-      ];
-    }
-
-    return [
-      {
-        name: "AWS CodeArtifact Login",
-        run: `${executeProjenCommand} ca:login`,
-        env: {
-          AWS_ACCESS_KEY_ID: secretToString(
-            parsedCodeArtifactOptions.accessKeyIdSecret,
-          ),
-          AWS_SECRET_ACCESS_KEY: secretToString(
-            parsedCodeArtifactOptions.secretAccessKeySecret,
-          ),
-        },
-      },
-    ];
-  }
-
-  /**
    * Returns the set of workflow steps which should be executed to bootstrap a
    * workflow.
    *
@@ -1117,72 +1032,13 @@ export class NodeProject extends GitHubProject {
   public renderWorkflowSetup(
     options: RenderWorkflowSetupOptions = {},
   ): JobStep[] {
-    const install = new Array<JobStep>();
-
-    // first run the workflow bootstrap steps
-    install.push(...this.workflowBootstrapSteps);
-
-    if (isYarnBerry(this.package.packageManager)) {
-      install.push({
-        name: "Enable corepack",
-        run: "corepack enable",
-      });
-    } else if (this.package.packageManager === NodePackageManager.PNPM) {
-      install.push({
-        name: "Setup pnpm",
-        uses: "pnpm/action-setup@v5",
-        with: { version: this.package.pnpmVersion },
-      });
-    } else if (this.package.packageManager === NodePackageManager.BUN) {
-      install.push({
-        name: "Setup bun",
-        uses: "oven-sh/setup-bun@v2",
-        with: { "bun-version": this.package.bunVersion },
-      });
-    }
-
-    if (this.package.packageManager !== NodePackageManager.BUN) {
-      if (this.nodeVersion || this.workflowPackageCache) {
-        const pm: NodePackageManager = this.package.packageManager;
-        const cache =
-          isYarnClassic(pm) || isYarnBerry(pm)
-            ? "yarn"
-            : pm === NodePackageManager.PNPM
-              ? "pnpm"
-              : "npm";
-        install.push({
-          name: "Setup Node.js",
-          uses: "actions/setup-node@v6",
-          with: {
-            ...(this.nodeVersion && {
-              "node-version": this.nodeVersion,
-            }),
-            ...(this.workflowPackageCache && {
-              cache,
-            }),
-            "package-manager-cache": this.workflowPackageCache,
-          },
-        });
-      }
-    }
-
-    const mutable = options.mutable ?? false;
-
-    if (this.package.scopedPackagesOptions) {
-      install.push(
-        ...this.getScopedPackageSteps(this.package.codeArtifactOptions),
-      );
-    }
-
-    install.push({
-      name: "Install dependencies",
-      run: mutable
-        ? this.package.installAndUpdateLockfileCommand
-        : this.package.installCommand,
-      ...(options.installStepConfiguration ?? {}),
+    return renderWorkflowSetupInternal({
+      package: this.package,
+      nodeVersion: this.nodeVersion,
+      workflowBootstrapSteps: this.workflowBootstrapSteps,
+      workflowPackageCache: this.workflowPackageCache,
+      ...options,
     });
-
-    return install;
   }
 
   /**

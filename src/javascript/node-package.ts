@@ -736,6 +736,7 @@ export class NodePackage extends Component {
   private readonly _prev?: Record<string, any>;
   private _renderedDeps?: NpmDependencies;
   private readonly _packageManagerExplicit: boolean;
+  private readonly preSynthesizeActions: (() => void)[] = [];
 
   constructor(project: Project, options: NodePackageOptions = {}) {
     super(project);
@@ -909,6 +910,11 @@ export class NodePackage extends Component {
       description: "Install project dependencies using frozen lockfile",
       exec: this.installCommand,
     });
+
+    if (isYarnBerry(this.packageManager)) {
+      // Needs to happen after the install tasks have been added
+      this.configureYarnBerryDedupe(options.yarnBerryOptions?.dedupePackages);
+    }
   }
 
   /**
@@ -2067,6 +2073,12 @@ export class NodePackage extends Component {
     this.project.tasks.runTask(taskToRun.name);
   }
 
+  public preSynthesize() {
+    for (const action of this.preSynthesizeActions) {
+      action();
+    }
+  }
+
   /**
    * Sets the `packageManager` field in `package.json` for corepack-managed
    * package managers (yarn berry and pnpm).
@@ -2134,6 +2146,25 @@ export class NodePackage extends Component {
         return nodePackage.allowedScripts.size > 0 ? false : undefined;
       },
       ...yarnRcOptions,
+    });
+  }
+
+  /**
+   * Configure package deduping
+   */
+  private configureYarnBerryDedupe(dedupePackages: string[] | undefined) {
+    if (!dedupePackages || dedupePackages.length === 0) {
+      return;
+    }
+
+    const dedupeCommand = ['yarn', 'dedupe', ...dedupePackages];
+
+    // Add dedupe to non-CI install command
+    this.project.tasks.tryFind("install")?.execArgs(dedupeCommand);
+
+    // Also add the action to a post-upgrade step if one is added
+    this.preSynthesizeActions.push(() => {
+      this.project.tasks.tryFind("post-upgrade")?.execArgs(dedupeCommand);
     });
   }
 
@@ -2273,6 +2304,20 @@ export interface YarnBerryOptions {
    * @default false
    */
   readonly zeroInstalls?: boolean;
+
+  /**
+   * Packages to deduplicate.
+   *
+   * This will prevent multiple versions of the same package from being
+   * installed in the lock file, if a single version could satisfy all requested
+   * version ranges. This will prevent version proliferation and reduce the size
+   * of the depdendency tree.
+   *
+   * Setting this will run `yarn dedupe` after dependency upgrades.
+   *
+   * Supports glob patterns, e.g. `@aws-sdk/*`.
+   */
+  readonly dedupePackages?: string[];
 }
 
 /**

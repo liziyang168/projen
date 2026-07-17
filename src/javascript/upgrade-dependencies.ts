@@ -27,7 +27,7 @@ import type {
   JobPermissions,
 } from "../github/workflows-model";
 import { JobPermission } from "../github/workflows-model";
-import type { NodeProject } from "../javascript";
+import { NodePackage, NodeProject } from "../javascript";
 import { NodePackageManager } from "../javascript";
 import { Release } from "../release";
 import type { GroupRunnerOptions } from "../runner-options";
@@ -35,6 +35,8 @@ import { filteredRunsOnOptions } from "../runner-options";
 import type { Task } from "../task";
 import type { TaskStep } from "../task-model";
 import { workflowNameForProject } from "../util/name";
+import { Project } from "../project";
+import { renderWorkflowSetupInternal } from "./private/github-workflow-helpers";
 
 const CREATE_PATCH_STEP_ID = "create_patch";
 const PATCH_CREATED_OUTPUT = "patch_created";
@@ -174,10 +176,10 @@ export class UpgradeDependencies extends Component {
    */
   public readonly workflows: GithubWorkflow[] = [];
 
-  public readonly project: NodeProject;
-
   private readonly options: UpgradeDependenciesOptions;
   private readonly pullRequestTitle: string;
+
+  private readonly package: NodePackage;
 
   /**
    * Container definitions for the upgrade workflow.
@@ -202,11 +204,16 @@ export class UpgradeDependencies extends Component {
   private readonly satisfyPeerDependencies: boolean;
   private readonly includeDeprecatedVersions: boolean;
 
-  constructor(project: NodeProject, options: UpgradeDependenciesOptions = {}) {
+  constructor(project: Project, options: UpgradeDependenciesOptions = {}) {
     super(project);
 
-    this.project = project;
     this.options = options;
+
+    const pkg = NodePackage.of(project);
+    if (!pkg) {
+      throw new Error(`UpgradeDependencies can only be used with projects that have a NodePackage`);
+    }
+    this.package = pkg;
 
     // Validate cooldown
     if (
@@ -219,7 +226,7 @@ export class UpgradeDependencies extends Component {
     }
 
     // Yarn classic doesn't support cooldown
-    if (options.cooldown && isYarnClassic(project.package.packageManager)) {
+    if (options.cooldown && isYarnClassic(this.package.packageManager)) {
       throw new Error(
         "The 'cooldown' option is not supported with yarn classic. " +
           "Consider using npm, pnpm, bun, or yarn berry instead.",
@@ -260,19 +267,19 @@ export class UpgradeDependencies extends Component {
     // Yarn berry treats any non-empty CI value as truthy and auto-enables
     // immutable installs. Explicitly disable it so yarn dlx/up can modify
     // the lockfile during upgrades.
-    if (isYarnBerry(project.package.packageManager)) {
+    if (isYarnBerry(this.package.packageManager)) {
       taskEnv.YARN_ENABLE_IMMUTABLE_INSTALLS = "false";
     }
 
     // Set yarn berry cooldown via environment variable, expects minutes
-    if (options.cooldown && isYarnBerry(project.package.packageManager)) {
+    if (options.cooldown && isYarnBerry(this.package.packageManager)) {
       taskEnv.YARN_NPM_MINIMAL_AGE_GATE = String(
         daysToMinutes(options.cooldown),
       );
     }
 
     // Set npm cooldown date via environment variable (calculated at runtime), expects a date in ISO format
-    if (options.cooldown && isNpm(project.package.packageManager)) {
+    if (options.cooldown && isNpm(this.package.packageManager)) {
       taskEnv.NPM_CONFIG_BEFORE = `$(node -p "new Date(Date.now()-${daysToMilliseconds(
         options.cooldown,
       )}).toISOString()")`;
@@ -347,7 +354,7 @@ export class UpgradeDependencies extends Component {
     }
 
     // run "yarn/npm install" to update the lockfile and install any deps (such as projen)
-    steps.push({ exec: this.project.package.installAndUpdateLockfileCommand });
+    steps.push({ exec: this.package.installAndUpdateLockfileCommand });
 
     // run upgrade command to upgrade transitive deps as well
     steps.push({
@@ -376,7 +383,7 @@ export class UpgradeDependencies extends Component {
     } = {},
   ): string[] {
     const command = [
-      ...executeCommandPriorInstallation(this.project.package.packageManager),
+      ...executeCommandPriorInstallation(this.package.packageManager),
       "npm-check-updates@20",
     ];
 
@@ -452,7 +459,7 @@ export class UpgradeDependencies extends Component {
       };
     }
 
-    const packageManager = this.project.package.packageManager;
+    const packageManager = this.package.packageManager;
     const cooldown = this.options.cooldown;
 
     let lazy = undefined;
@@ -589,9 +596,23 @@ export class UpgradeDependencies extends Component {
         : {}),
     };
 
+    const nodeProject = this.project instanceof NodeProject ? this.project : undefined;
+
+    // Render the workflow setup. This comes initially from the NodeProject
+    // (should that not be the GitHub component that does that rendering?),
+    // otherwise we will fall back to the internal helper directly.
+    const workflowSetup = nodeProject?.renderWorkflowSetup({ mutable: false })
+     ?? renderWorkflowSetupInternal({
+      package: this.package,
+      nodeVersion: undefined,
+      workflowBootstrapSteps: undefined,
+      workflowPackageCache: false,
+      mutable: false,
+     });
+
     const steps: workflows.JobStep[] = [
       WorkflowSteps.checkout({ with: with_ }),
-      ...this.project.renderWorkflowSetup({ mutable: false }),
+      ...workflowSetup,
       {
         name: "Upgrade dependencies",
         run: this.project.runTaskCommand(task),
