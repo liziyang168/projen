@@ -5509,19 +5509,19 @@ Upgrade node project dependencies.
 ```typescript
 import { javascript } from 'projen'
 
-new javascript.UpgradeDependencies(project: NodeProject, options?: UpgradeDependenciesOptions)
+new javascript.UpgradeDependencies(project: Project, options?: UpgradeDependenciesOptions)
 ```
 
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
-| <code><a href="#projen.javascript.UpgradeDependencies.Initializer.parameter.project">project</a></code> | <code><a href="#projen.javascript.NodeProject">NodeProject</a></code> | *No description.* |
+| <code><a href="#projen.javascript.UpgradeDependencies.Initializer.parameter.project">project</a></code> | <code>projen.Project</code> | *No description.* |
 | <code><a href="#projen.javascript.UpgradeDependencies.Initializer.parameter.options">options</a></code> | <code><a href="#projen.javascript.UpgradeDependenciesOptions">UpgradeDependenciesOptions</a></code> | *No description.* |
 
 ---
 
 ##### `project`<sup>Required</sup> <a name="project" id="projen.javascript.UpgradeDependencies.Initializer.parameter.project"></a>
 
-- *Type:* <a href="#projen.javascript.NodeProject">NodeProject</a>
+- *Type:* projen.Project
 
 ---
 
@@ -5719,7 +5719,7 @@ Test whether the given construct is a component.
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
 | <code><a href="#projen.javascript.UpgradeDependencies.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
-| <code><a href="#projen.javascript.UpgradeDependencies.property.project">project</a></code> | <code><a href="#projen.javascript.NodeProject">NodeProject</a></code> | *No description.* |
+| <code><a href="#projen.javascript.UpgradeDependencies.property.project">project</a></code> | <code>projen.Project</code> | *No description.* |
 | <code><a href="#projen.javascript.UpgradeDependencies.property.postUpgradeTask">postUpgradeTask</a></code> | <code>projen.Task</code> | A task run after the upgrade task. |
 | <code><a href="#projen.javascript.UpgradeDependencies.property.upgradeTask">upgradeTask</a></code> | <code>projen.Task</code> | The upgrade task. |
 | <code><a href="#projen.javascript.UpgradeDependencies.property.workflows">workflows</a></code> | <code>projen.github.GithubWorkflow[]</code> | The workflows that execute the upgrades. |
@@ -5742,10 +5742,10 @@ The tree node.
 ##### `project`<sup>Required</sup> <a name="project" id="projen.javascript.UpgradeDependencies.property.project"></a>
 
 ```typescript
-public readonly project: NodeProject;
+public readonly project: Project;
 ```
 
-- *Type:* <a href="#projen.javascript.NodeProject">NodeProject</a>
+- *Type:* projen.Project
 
 ---
 

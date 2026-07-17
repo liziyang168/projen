@@ -2157,7 +2157,7 @@ export class NodePackage extends Component {
       return;
     }
 
-    const dedupeCommand = ['yarn', 'dedupe', ...dedupePackages];
+    const dedupeCommand = ["yarn", "dedupe", ...dedupePackages];
 
     // Add dedupe to non-CI install command
     this.project.tasks.tryFind("install")?.execArgs(dedupeCommand);

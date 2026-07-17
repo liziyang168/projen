@@ -1,8 +1,13 @@
 import { secretToString } from "../../github/private/util";
-import { JobStep } from "../../github/workflows-model";
-import { CodeArtifactAuthProvider, NodePackage, NodePackageManager } from "../node-package";
-import { RenderWorkflowSetupOptions } from "../node-project";
-import { executeCommandPriorInstallation, isYarnBerry, isYarnClassic } from "../util";
+import type { JobStep } from "../../github/workflows-model";
+import type { NodePackage } from "../node-package";
+import { CodeArtifactAuthProvider, NodePackageManager } from "../node-package";
+import type { RenderWorkflowSetupOptions } from "../node-project";
+import {
+  executeCommandPriorInstallation,
+  isYarnBerry,
+  isYarnClassic,
+} from "../util";
 
 interface RenderWorkflowSetupOptionsInternal extends RenderWorkflowSetupOptions {
   readonly package: NodePackage;
@@ -11,13 +16,13 @@ interface RenderWorkflowSetupOptionsInternal extends RenderWorkflowSetupOptions 
   readonly workflowBootstrapSteps: JobStep[] | undefined;
 }
 
-  export function renderWorkflowSetupInternal(
+export function renderWorkflowSetupInternal(
   options: RenderWorkflowSetupOptionsInternal,
 ): JobStep[] {
   const install = new Array<JobStep>();
 
   // first run the workflow bootstrap steps
-  install.push(...options.workflowBootstrapSteps ?? []);
+  install.push(...(options.workflowBootstrapSteps ?? []));
 
   if (isYarnBerry(options.package.packageManager)) {
     install.push({
@@ -66,9 +71,7 @@ interface RenderWorkflowSetupOptionsInternal extends RenderWorkflowSetupOptions 
   const mutable = options.mutable ?? false;
 
   if (options.package.scopedPackagesOptions) {
-    install.push(
-      ...getScopedPackageSteps(options.package),
-    );
+    install.push(...getScopedPackageSteps(options.package));
   }
 
   install.push({
@@ -88,9 +91,7 @@ interface RenderWorkflowSetupOptionsInternal extends RenderWorkflowSetupOptions 
  * @param codeArtifactOptions Details of logging in to AWS
  * @returns array of job steps required for each private scoped packages
  */
-function getScopedPackageSteps(
-  pkg: NodePackage,
-): JobStep[] {
+function getScopedPackageSteps(pkg: NodePackage): JobStep[] {
   const codeArtifactOptions = pkg.codeArtifactOptions;
 
   const parsedCodeArtifactOptions = {

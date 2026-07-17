@@ -27,15 +27,14 @@ import type {
   JobPermissions,
 } from "../github/workflows-model";
 import { JobPermission } from "../github/workflows-model";
-import { NodePackage, NodeProject } from "../javascript";
-import { NodePackageManager } from "../javascript";
+import { NodePackage, NodeProject, NodePackageManager } from "../javascript";
+import type { Project } from "../project";
 import { Release } from "../release";
 import type { GroupRunnerOptions } from "../runner-options";
 import { filteredRunsOnOptions } from "../runner-options";
 import type { Task } from "../task";
 import type { TaskStep } from "../task-model";
 import { workflowNameForProject } from "../util/name";
-import { Project } from "../project";
 import { renderWorkflowSetupInternal } from "./private/github-workflow-helpers";
 
 const CREATE_PATCH_STEP_ID = "create_patch";
@@ -211,7 +210,9 @@ export class UpgradeDependencies extends Component {
 
     const pkg = NodePackage.of(project);
     if (!pkg) {
-      throw new Error(`UpgradeDependencies can only be used with projects that have a NodePackage`);
+      throw new Error(
+        `UpgradeDependencies can only be used with projects that have a NodePackage`,
+      );
     }
     this.package = pkg;
 
@@ -596,19 +597,21 @@ export class UpgradeDependencies extends Component {
         : {}),
     };
 
-    const nodeProject = this.project instanceof NodeProject ? this.project : undefined;
+    const nodeProject =
+      this.project instanceof NodeProject ? this.project : undefined;
 
     // Render the workflow setup. This comes initially from the NodeProject
     // (should that not be the GitHub component that does that rendering?),
     // otherwise we will fall back to the internal helper directly.
-    const workflowSetup = nodeProject?.renderWorkflowSetup({ mutable: false })
-     ?? renderWorkflowSetupInternal({
-      package: this.package,
-      nodeVersion: undefined,
-      workflowBootstrapSteps: undefined,
-      workflowPackageCache: false,
-      mutable: false,
-     });
+    const workflowSetup =
+      nodeProject?.renderWorkflowSetup({ mutable: false }) ??
+      renderWorkflowSetupInternal({
+        package: this.package,
+        nodeVersion: undefined,
+        workflowBootstrapSteps: undefined,
+        workflowPackageCache: false,
+        mutable: false,
+      });
 
     const steps: workflows.JobStep[] = [
       WorkflowSteps.checkout({ with: with_ }),
